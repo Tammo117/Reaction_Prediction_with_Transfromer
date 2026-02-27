@@ -29,6 +29,7 @@ def train_model(model, train_loader, val_loader, optimizer, scheduler, criterion
             "device": str(device),
         })
         best_val_loss = float('inf')
+        num_batches = len(train_loader)
         
         for epoch in range(num_epochs):
             # Training phase
@@ -53,6 +54,13 @@ def train_model(model, train_loader, val_loader, optimizer, scheduler, criterion
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
+
+                # Step scheduler -> cosine scheduler should step every batch, not epoch
+                scheduler.step()
+                # track it immediately for better granularity
+                current_lr = optimizer.param_groups[0]['lr']
+                global_step = epoch * num_batches + train_batches
+                mlflow.log_metric("learning_rate", current_lr, step=global_step)
                 
                 train_total_loss += loss.item()
                 train_batches += 1
@@ -90,11 +98,7 @@ def train_model(model, train_loader, val_loader, optimizer, scheduler, criterion
             val_loss = val_total_loss / val_batches
 
             # Step scheduler
-            scheduler.step()
-
-            # Log LR
-            current_lr = optimizer.param_groups[0]['lr']
-            mlflow.log_metric("learning_rate", current_lr, step=epoch)
+            #scheduler.step()
             
             # Store history
             if val_loss < best_val_loss:
@@ -119,6 +123,7 @@ def train_model(model, train_loader, val_loader, optimizer, scheduler, criterion
             
             # Print epoch summary
             print(f'Epoch {epoch+1}: Train Loss: {train_loss:.3f}, Val Loss: {val_loss:.3f}\n')
+            print(f"Current learning rate: {optimizer.param_groups[0]['lr']:.5f}")
         
         print(f"✅ MLflow run logged: {mlflow.active_run().info.run_id}")
     
